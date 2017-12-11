@@ -60,12 +60,12 @@ func (e *Envelope) rlpWithoutNonce() []byte {
 
 // NewEnvelope wraps a Whisper message with expiration and destination data
 // included into an envelope for network forwarding.
-func NewEnvelope(ttl uint32, topic TopicType, msg *sentMessage) *Envelope {
+func NewEnvelope(ttl uint32, topic TopicType, msg sentMessage) *Envelope {
 	env := Envelope{
 		Expiry: uint32(time.Now().Add(time.Second * time.Duration(ttl)).Unix()),
 		TTL:    ttl,
 		Topic:  topic,
-		Data:   msg.Raw,
+		Data:   msg.Data(),
 		Nonce:  0,
 	}
 
@@ -171,8 +171,8 @@ func (e *Envelope) DecodeRLP(s *rlp.Stream) error {
 }
 
 // OpenAsymmetric tries to decrypt an envelope, potentially encrypted with a particular key.
-func (e *Envelope) OpenAsymmetric(key *ecdsa.PrivateKey) (*ReceivedMessage, error) {
-	message := &ReceivedMessage{Raw: e.Data}
+func (e *Envelope) OpenAsymmetric(key *ecdsa.PrivateKey) (ReceivedMessage, error) {
+	message := NewReceivedMessage(e)
 	err := message.decryptAsymmetric(key)
 	switch err {
 	case nil:
@@ -185,8 +185,8 @@ func (e *Envelope) OpenAsymmetric(key *ecdsa.PrivateKey) (*ReceivedMessage, erro
 }
 
 // OpenSymmetric tries to decrypt an envelope, potentially encrypted with a particular key.
-func (e *Envelope) OpenSymmetric(key []byte) (msg *ReceivedMessage, err error) {
-	msg = &ReceivedMessage{Raw: e.Data}
+func (e *Envelope) OpenSymmetric(key []byte) (msg ReceivedMessage, err error) {
+	msg = NewReceivedMessage(e)
 	err = msg.decryptSymmetric(key)
 	if err != nil {
 		msg = nil
@@ -195,7 +195,7 @@ func (e *Envelope) OpenSymmetric(key []byte) (msg *ReceivedMessage, err error) {
 }
 
 // Open tries to decrypt an envelope, and populates the message fields in case of success.
-func (e *Envelope) Open(watcher *Filter) (msg *ReceivedMessage) {
+func (e *Envelope) Open(watcher *Filter) (msg ReceivedMessage) {
 	// The API interface forbids filters doing both symmetric and
 	// asymmetric encryption.
 	if watcher.expectsAsymmetricEncryption() && watcher.expectsSymmetricEncryption() {
@@ -205,12 +205,12 @@ func (e *Envelope) Open(watcher *Filter) (msg *ReceivedMessage) {
 	if watcher.expectsAsymmetricEncryption() {
 		msg, _ = e.OpenAsymmetric(watcher.KeyAsym)
 		if msg != nil {
-			msg.Dst = &watcher.KeyAsym.PublicKey
+			msg.SetDst(&watcher.KeyAsym.PublicKey)
 		}
 	} else if watcher.expectsSymmetricEncryption() {
 		msg, _ = e.OpenSymmetric(watcher.KeySym)
 		if msg != nil {
-			msg.SymKeyHash = crypto.Keccak256Hash(watcher.KeySym)
+			msg.SetSymKeyHash(crypto.Keccak256Hash(watcher.KeySym))
 		}
 	}
 
@@ -219,11 +219,7 @@ func (e *Envelope) Open(watcher *Filter) (msg *ReceivedMessage) {
 		if !ok {
 			return nil
 		}
-		msg.Topic = e.Topic
-		msg.PoW = e.PoW()
-		msg.TTL = e.TTL
-		msg.Sent = e.Expiry - e.TTL
-		msg.EnvelopeHash = e.Hash()
+		msg.SetEnvelope(e)
 	}
 	return msg
 }

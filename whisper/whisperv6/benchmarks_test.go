@@ -43,7 +43,7 @@ func BenchmarkEncryptionSym(b *testing.B) {
 		_, err := msg.Wrap(params)
 		if err != nil {
 			b.Errorf("failed Wrap with seed %d: %s.", seed, err)
-			b.Errorf("i = %d, len(msg.Raw) = %d, params.Payload = %d.", i, len(msg.Raw), len(params.Payload))
+			b.Errorf("i = %d, len(msg.Raw) = %d, params.Payload = %d.", i, len(msg.Data()), len(params.Payload))
 			return
 		}
 	}

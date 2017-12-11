@@ -351,7 +351,7 @@ func (api *PublicWhisperAPI) Messages(ctx context.Context, crit Criteria) (*rpc.
 
 	filter := Filter{
 		PoW:      crit.MinPow,
-		Messages: make(map[common.Hash]*ReceivedMessage),
+		Messages: make(map[common.Hash]ReceivedMessage),
 		AllowP2P: crit.AllowP2P,
 	}
 
@@ -428,10 +428,10 @@ func (api *PublicWhisperAPI) Messages(ctx context.Context, crit Criteria) (*rpc.
 	return rpcSub, nil
 }
 
-//go:generate gencodec -type Message -field-override messageOverride -out gen_message_json.go
+//go:generate gencodec -type APIMessage -field-override messageOverride -out gen_message_json.go
 
 // Message is the RPC representation of a whisper message.
-type Message struct {
+type APIMessage struct {
 	Sig       []byte    `json:"sig,omitempty"`
 	TTL       uint32    `json:"ttl"`
 	Timestamp uint32    `json:"timestamp"`
@@ -451,47 +451,18 @@ type messageOverride struct {
 	Dst     hexutil.Bytes
 }
 
-// ToWhisperMessage converts an internal message into an API version.
-func ToWhisperMessage(message *ReceivedMessage) *Message {
-	msg := Message{
-		Payload:   message.Payload,
-		Padding:   message.Padding,
-		Timestamp: message.Sent,
-		TTL:       message.TTL,
-		PoW:       message.PoW,
-		Hash:      message.EnvelopeHash.Bytes(),
-		Topic:     message.Topic,
-	}
-
-	if message.Dst != nil {
-		b := crypto.FromECDSAPub(message.Dst)
-		if b != nil {
-			msg.Dst = b
-		}
-	}
-
-	if isMessageSigned(message.Raw[0]) {
-		b := crypto.FromECDSAPub(message.SigToPubKey())
-		if b != nil {
-			msg.Sig = b
-		}
-	}
-
-	return &msg
-}
-
 // toMessage converts a set of messages to its RPC representation.
-func toMessage(messages []*ReceivedMessage) []*Message {
-	msgs := make([]*Message, len(messages))
+func toMessage(messages []ReceivedMessage) []*APIMessage {
+	msgs := make([]*APIMessage, len(messages))
 	for i, msg := range messages {
-		msgs[i] = ToWhisperMessage(msg)
+		msgs[i] = msg.ToAPIMessage()
 	}
 	return msgs
 }
 
 // GetFilterMessages returns the messages that match the filter criteria and
 // are received between the last poll and now.
-func (api *PublicWhisperAPI) GetFilterMessages(id string) ([]*Message, error) {
+func (api *PublicWhisperAPI) GetFilterMessages(id string) ([]*APIMessage, error) {
 	api.mu.Lock()
 	f := api.w.GetFilter(id)
 	if f == nil {
@@ -502,9 +473,9 @@ func (api *PublicWhisperAPI) GetFilterMessages(id string) ([]*Message, error) {
 	api.mu.Unlock()
 
 	receivedMessages := f.Retrieve()
-	messages := make([]*Message, 0, len(receivedMessages))
+	messages := make([]*APIMessage, 0, len(receivedMessages))
 	for _, msg := range receivedMessages {
-		messages = append(messages, ToWhisperMessage(msg))
+		messages = append(messages, msg.ToAPIMessage())
 	}
 
 	return messages, nil
@@ -575,7 +546,7 @@ func (api *PublicWhisperAPI) NewMessageFilter(req Criteria) (string, error) {
 		PoW:      req.MinPow,
 		AllowP2P: req.AllowP2P,
 		Topics:   topics,
-		Messages: make(map[common.Hash]*ReceivedMessage),
+		Messages: make(map[common.Hash]ReceivedMessage),
 	}
 
 	id, err := api.w.Subscribe(f)

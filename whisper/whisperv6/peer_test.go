@@ -205,10 +205,10 @@ func checkPropagation(t *testing.T) {
 	t.Fatalf("Test was not complete: timeout %d seconds.", iterations*cycle/1000)
 }
 
-func validateMail(t *testing.T, index int, mail []*ReceivedMessage) bool {
+func validateMail(t *testing.T, index int, mail []ReceivedMessage) bool {
 	var cnt int
 	for _, m := range mail {
-		if bytes.Equal(m.Payload, expectedMessage) {
+		if bytes.Equal(m.Payload(), expectedMessage) {
 			cnt++
 		}
 	}

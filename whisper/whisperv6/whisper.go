@@ -735,8 +735,8 @@ func (w *Whisper) Envelopes() []*Envelope {
 
 // Messages iterates through all currently floating envelopes
 // and retrieves all the messages, that this filter could decrypt.
-func (w *Whisper) Messages(id string) []*ReceivedMessage {
-	result := make([]*ReceivedMessage, 0)
+func (w *Whisper) Messages(id string) []ReceivedMessage {
+	result := make([]ReceivedMessage, 0)
 	w.poolMu.RLock()
 	defer w.poolMu.RUnlock()
 

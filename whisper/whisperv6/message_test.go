@@ -79,7 +79,7 @@ func singleMessageTest(t *testing.T, symmetric bool) {
 		t.Fatalf("failed Wrap with seed %d: %s.", seed, err)
 	}
 
-	var decrypted *ReceivedMessage
+	var decrypted ReceivedMessage
 	if symmetric {
 		decrypted, err = env.OpenSymmetric(params.KeySym)
 	} else {
@@ -94,16 +94,16 @@ func singleMessageTest(t *testing.T, symmetric bool) {
 		t.Fatalf("failed to validate with seed %d.", seed)
 	}
 
-	if !bytes.Equal(text, decrypted.Payload) {
+	if !bytes.Equal(text, decrypted.Payload()) {
 		t.Fatalf("failed with seed %d: compare payload.", seed)
 	}
-	if !isMessageSigned(decrypted.Raw[0]) {
+	if !isMessageSigned(decrypted.Data()[0]) {
 		t.Fatalf("failed with seed %d: unsigned.", seed)
 	}
-	if len(decrypted.Signature) != signatureLength {
-		t.Fatalf("failed with seed %d: signature len %d.", seed, len(decrypted.Signature))
+	if len(decrypted.Signature()) != signatureLength {
+		t.Fatalf("failed with seed %d: signature len %d.", seed, len(decrypted.Signature()))
 	}
-	if !IsPubKeyEqual(decrypted.Src, &params.Src.PublicKey) {
+	if !IsPubKeyEqual(decrypted.Src(), &params.Src.PublicKey) {
 		t.Fatalf("failed with seed %d: signature mismatch.", seed)
 	}
 }
@@ -251,16 +251,16 @@ func singleEnvelopeOpenTest(t *testing.T, symmetric bool) {
 		t.Fatalf("failed to open with seed %d.", seed)
 	}
 
-	if !bytes.Equal(text, decrypted.Payload) {
+	if !bytes.Equal(text, decrypted.Payload()) {
 		t.Fatalf("failed with seed %d: compare payload.", seed)
 	}
-	if !isMessageSigned(decrypted.Raw[0]) {
+	if !isMessageSigned(decrypted.Data()[0]) {
 		t.Fatalf("failed with seed %d: unsigned.", seed)
 	}
-	if len(decrypted.Signature) != signatureLength {
-		t.Fatalf("failed with seed %d: signature len %d.", seed, len(decrypted.Signature))
+	if len(decrypted.Signature()) != signatureLength {
+		t.Fatalf("failed with seed %d: signature len %d.", seed, len(decrypted.Signature()))
 	}
-	if !IsPubKeyEqual(decrypted.Src, &params.Src.PublicKey) {
+	if !IsPubKeyEqual(decrypted.Src(), &params.Src.PublicKey) {
 		t.Fatalf("failed with seed %d: signature mismatch.", seed)
 	}
 	if decrypted.isAsymmetricEncryption() == symmetric {
@@ -273,7 +273,7 @@ func singleEnvelopeOpenTest(t *testing.T, symmetric bool) {
 		if decrypted.Dst == nil {
 			t.Fatalf("failed with seed %d: dst is nil.", seed)
 		}
-		if !IsPubKeyEqual(decrypted.Dst, &key.PublicKey) {
+		if !IsPubKeyEqual(decrypted.Dst(), &key.PublicKey) {
 			t.Fatalf("failed with seed %d: Dst.", seed)
 		}
 	}
@@ -389,7 +389,7 @@ func singlePaddingTest(t *testing.T, padSize int) {
 	if decrypted == nil {
 		t.Fatalf("failed to open, seed and sz=%d: %d.", seed, padSize)
 	}
-	if !bytes.Equal(pad, decrypted.Padding) {
+	if !bytes.Equal(pad, decrypted.Padding()) {
 		t.Fatalf("padding is not retireved as expected with seed %d and sz=%d:\n[%x]\n[%x].", seed, padSize, pad, decrypted.Padding)
 	}
 }
@@ -426,7 +426,7 @@ func TestPaddingAppendedToSymMessages(t *testing.T) {
 	// Simulate a message with a payload just under 256 so that
 	// payload + flag + aesnonce > 256. Check that the result
 	// is padded on the next 256 boundary.
-	msg := sentMessage{}
+	msg := Message{}
 	msg.Raw = make([]byte, len(params.Payload)+1+AESNonceLength)
 
 	err := msg.appendPadding(params)
@@ -458,7 +458,7 @@ func TestPaddingAppendedToSymMessagesWithSignature(t *testing.T) {
 	// Simulate a message with a payload just under 256 so that
 	// payload + flag + aesnonce > 256. Check that the result
 	// is padded on the next 256 boundary.
-	msg := sentMessage{}
+	msg := Message{}
 	msg.Raw = make([]byte, len(params.Payload)+1+AESNonceLength+signatureLength)
 
 	err = msg.appendPadding(params)

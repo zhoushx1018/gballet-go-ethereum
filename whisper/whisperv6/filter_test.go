@@ -50,7 +50,7 @@ type FilterTestCase struct {
 
 func generateFilter(t *testing.T, symmetric bool) (*Filter, error) {
 	var f Filter
-	f.Messages = make(map[common.Hash]*ReceivedMessage)
+	f.Messages = make(map[common.Hash]ReceivedMessage)
 
 	const topicNum = 8
 	f.Topics = make([][]byte, topicNum)
@@ -173,7 +173,7 @@ func TestInstallIdenticalFilters(t *testing.T) {
 		Topics:   filter1.Topics,
 		PoW:      filter1.PoW,
 		AllowP2P: filter1.AllowP2P,
-		Messages: make(map[common.Hash]*ReceivedMessage),
+		Messages: make(map[common.Hash]ReceivedMessage),
 	}
 
 	_, err := filters.Install(filter1)
@@ -249,7 +249,7 @@ func TestInstallFilterWithSymAndAsymKeys(t *testing.T) {
 		Topics:   filter1.Topics,
 		PoW:      filter1.PoW,
 		AllowP2P: filter1.AllowP2P,
-		Messages: make(map[common.Hash]*ReceivedMessage),
+		Messages: make(map[common.Hash]ReceivedMessage),
 	}
 
 	_, err = filters.Install(filter)
@@ -474,13 +474,13 @@ func TestMatchMessageSym(t *testing.T) {
 	}
 
 	// insufficient PoW: mismatch
-	f.PoW = msg.PoW + 1.0
+	f.PoW = msg.PoW() + 1.0
 	if f.MatchMessage(msg) {
 		t.Fatalf("failed MatchEnvelope(insufficient PoW) with seed %d.", seed)
 	}
 
 	// sufficient PoW: match
-	f.PoW = msg.PoW / 2
+	f.PoW = msg.PoW() / 2
 	if !f.MatchMessage(msg) {
 		t.Fatalf("failed MatchEnvelope(sufficient PoW) with seed %d.", seed)
 	}
@@ -567,13 +567,13 @@ func TestMatchMessageAsym(t *testing.T) {
 	}
 
 	// insufficient PoW: mismatch
-	f.PoW = msg.PoW + 1.0
+	f.PoW = msg.PoW() + 1.0
 	if f.MatchMessage(msg) {
 		t.Fatalf("failed MatchEnvelope(insufficient PoW) with seed %d.", seed)
 	}
 
 	// sufficient PoW: match
-	f.PoW = msg.PoW / 2
+	f.PoW = msg.PoW() / 2
 	if !f.MatchMessage(msg) {
 		t.Fatalf("failed MatchEnvelope(sufficient PoW) with seed %d.", seed)
 	}
@@ -610,7 +610,7 @@ func TestMatchMessageAsym(t *testing.T) {
 
 func cloneFilter(orig *Filter) *Filter {
 	var clone Filter
-	clone.Messages = make(map[common.Hash]*ReceivedMessage)
+	clone.Messages = make(map[common.Hash]ReceivedMessage)
 	clone.Src = orig.Src
 	clone.KeyAsym = orig.KeyAsym
 	clone.KeySym = orig.KeySym
@@ -683,7 +683,7 @@ func TestWatchers(t *testing.T) {
 	}
 
 	var total int
-	var mail []*ReceivedMessage
+	var mail []ReceivedMessage
 	var count [NumFilters]int
 
 	for i = 0; i < NumFilters; i++ {

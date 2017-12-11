@@ -49,46 +49,145 @@ type MessageParams struct {
 // SentMessage represents an end-user data packet to transmit through the
 // Whisper protocol. These are wrapped into Envelopes that need not be
 // understood by intermediate nodes, just forwarded.
-type sentMessage struct {
-	Raw []byte
+type sentMessage interface {
+	appendPadding(params *MessageParams) error
+	sign(key *ecdsa.PrivateKey) error
+	encryptAsymmetric(key *ecdsa.PublicKey) error
+	encryptSymmetric(key []byte) (err error)
+	Wrap(options *MessageParams) (envelope *Envelope, err error)
+	Data() []byte
 }
 
 // ReceivedMessage represents a data packet to be received through the
 // Whisper protocol.
-type ReceivedMessage struct {
+type ReceivedMessage interface {
+	SetEnvelope(*Envelope)
+	Envelope() *Envelope
+
+	isSymmetricEncryption() bool
+	isAsymmetricEncryption() bool
+
+	PoW() float64
+	TTL() uint32
+	Sent() uint32
+	Topic() TopicType
+	Payload() []byte
+	Data() []byte
+	Signature() []byte
+	Padding() []byte
+	Src() *ecdsa.PublicKey
+	Dst() *ecdsa.PublicKey
+	SetDst(*ecdsa.PublicKey)
+	SymKeyHash() common.Hash
+	SetSymKeyHash(common.Hash)
+
+	decryptSymmetric(key []byte) error
+	decryptAsymmetric(key *ecdsa.PrivateKey) error
+	Validate() bool
+
+	extractPadding(end int) (int, bool)
+	SigToPubKey() *ecdsa.PublicKey
+	hash() []byte
+
+	ToAPIMessage() *APIMessage
+}
+
+type Message struct {
 	Raw []byte
 
-	Payload   []byte
-	Padding   []byte
-	Signature []byte
+	payload   []byte
+	padding   []byte
+	signature []byte
 	Salt      []byte
 
-	PoW   float64          // Proof of work as described in the Whisper spec
-	Sent  uint32           // Time when the message was posted into the network
-	TTL   uint32           // Maximum time to live allowed for the message
-	Src   *ecdsa.PublicKey // Message recipient (identity used to decode the message)
-	Dst   *ecdsa.PublicKey // Message recipient (identity used to decode the message)
-	Topic TopicType
+	// PoW   float64          // Proof of work as described in the Whisper spec
+	// Sent  uint32           // Time when the message was posted into the network
+	// TTL   uint32           // Maximum time to live allowed for the message
+	src *ecdsa.PublicKey // Message recipient (identity used to decode the message)
+	dst *ecdsa.PublicKey // Message recipient (identity used to decode the message)
+	// Topic TopicType
 
-	SymKeyHash   common.Hash // The Keccak256Hash of the key, associated with the Topic
-	EnvelopeHash common.Hash // Message envelope hash to act as a unique id
+	symKeyHash common.Hash // The Keccak256Hash of the key, associated with the Topic
+	// EnvelopeHash common.Hash // Message envelope hash to act as a unique id
+
+	envelope *Envelope // Pointer to the reference envelope
 }
 
 func isMessageSigned(flags byte) bool {
 	return (flags & signatureFlag) != 0
 }
 
-func (msg *ReceivedMessage) isSymmetricEncryption() bool {
-	return msg.SymKeyHash != common.Hash{}
+func NewReceivedMessage(e *Envelope) ReceivedMessage {
+	return &Message{Raw: e.Data, envelope: e}
 }
 
-func (msg *ReceivedMessage) isAsymmetricEncryption() bool {
-	return msg.Dst != nil
+func (msg *Message) SetEnvelope(e *Envelope) {
+	msg.envelope = e
+}
+
+func (msg *Message) Envelope() *Envelope {
+	return msg.envelope
+}
+
+func (msg *Message) isSymmetricEncryption() bool {
+	return msg.symKeyHash != common.Hash{}
+}
+
+func (msg *Message) isAsymmetricEncryption() bool {
+	return msg.dst != nil
+}
+
+func (msg *Message) PoW() float64 {
+	return msg.envelope.PoW()
+}
+
+func (msg *Message) TTL() uint32 {
+	return msg.envelope.TTL
+}
+
+func (msg *Message) Sent() uint32 {
+	return (msg.envelope.Expiry - msg.envelope.TTL)
+}
+
+func (msg *Message) Topic() TopicType {
+	return (msg.envelope.Topic)
+}
+
+func (msg *Message) EnvelopeHash() common.Hash {
+	return msg.envelope.Hash()
+}
+
+func (msg *Message) Payload() []byte {
+	return msg.payload
+}
+
+func (msg *Message) Padding() []byte {
+	return msg.padding
+}
+
+func (msg *Message) Src() *ecdsa.PublicKey {
+	return msg.src
+}
+
+func (msg *Message) Dst() *ecdsa.PublicKey {
+	return msg.dst
+}
+
+func (msg *Message) SetDst(dst *ecdsa.PublicKey) {
+	msg.dst = dst
+}
+
+func (msg *Message) SymKeyHash() common.Hash {
+	return msg.symKeyHash
+}
+
+func (msg *Message) SetSymKeyHash(h common.Hash) {
+	msg.symKeyHash = h
 }
 
 // NewMessage creates and initializes a non-signed, non-encrypted Whisper message.
-func NewSentMessage(params *MessageParams) (*sentMessage, error) {
-	msg := sentMessage{}
+func NewSentMessage(params *MessageParams) (sentMessage, error) {
+	msg := Message{}
 	msg.Raw = make([]byte, 1, len(params.Payload)+len(params.Padding)+signatureLength+padSizeLimit)
 	msg.Raw[0] = 0 // set all the flags to zero
 	err := msg.appendPadding(params)
@@ -119,7 +218,7 @@ func intSize(i int) (s int) {
 
 // appendPadding appends the pseudorandom padding bytes and sets the padding flag.
 // The last byte contains the size of padding (thus, its size must not exceed 256).
-func (msg *sentMessage) appendPadding(params *MessageParams) error {
+func (msg *Message) appendPadding(params *MessageParams) error {
 	rawSize := len(params.Payload) + 1
 	if params.Src != nil {
 		rawSize += signatureLength
@@ -168,7 +267,7 @@ func (msg *sentMessage) appendPadding(params *MessageParams) error {
 
 // sign calculates and sets the cryptographic signature for the message,
 // also setting the sign flag.
-func (msg *sentMessage) sign(key *ecdsa.PrivateKey) error {
+func (msg *Message) sign(key *ecdsa.PrivateKey) error {
 	if isMessageSigned(msg.Raw[0]) {
 		// this should not happen, but no reason to panic
 		log.Error("failed to sign the message: already signed")
@@ -187,7 +286,7 @@ func (msg *sentMessage) sign(key *ecdsa.PrivateKey) error {
 }
 
 // encryptAsymmetric encrypts a message with a public key.
-func (msg *sentMessage) encryptAsymmetric(key *ecdsa.PublicKey) error {
+func (msg *Message) encryptAsymmetric(key *ecdsa.PublicKey) error {
 	if !ValidatePublicKey(key) {
 		return errors.New("invalid public key provided for asymmetric encryption")
 	}
@@ -200,7 +299,7 @@ func (msg *sentMessage) encryptAsymmetric(key *ecdsa.PublicKey) error {
 
 // encryptSymmetric encrypts a message with a topic key, using AES-GCM-256.
 // nonce size should be 12 bytes (see cipher.gcmStandardNonceSize).
-func (msg *sentMessage) encryptSymmetric(key []byte) (err error) {
+func (msg *Message) encryptSymmetric(key []byte) (err error) {
 	if !validateSymmetricKey(key) {
 		return errors.New("invalid key provided for symmetric encryption")
 	}
@@ -228,7 +327,7 @@ func (msg *sentMessage) encryptSymmetric(key []byte) (err error) {
 }
 
 // Wrap bundles the message into an Envelope to transmit over the network.
-func (msg *sentMessage) Wrap(options *MessageParams) (envelope *Envelope, err error) {
+func (msg *Message) Wrap(options *MessageParams) (envelope *Envelope, err error) {
 	if options.TTL == 0 {
 		options.TTL = DefaultTTL
 	}
@@ -255,9 +354,17 @@ func (msg *sentMessage) Wrap(options *MessageParams) (envelope *Envelope, err er
 	return envelope, nil
 }
 
+func (msg *Message) Data() []byte {
+	return msg.Raw
+}
+
+func (msg *Message) Signature() []byte {
+	return msg.signature
+}
+
 // decryptSymmetric decrypts a message with a topic key, using AES-GCM-256.
 // nonce size should be 12 bytes (see cipher.gcmStandardNonceSize).
-func (msg *ReceivedMessage) decryptSymmetric(key []byte) error {
+func (msg *Message) decryptSymmetric(key []byte) error {
 	// In v6, symmetric messages are expected to contain the 12-byte
 	// "salt" at the end of the payload.
 	if len(msg.Raw) < AESNonceLength {
@@ -287,7 +394,7 @@ func (msg *ReceivedMessage) decryptSymmetric(key []byte) error {
 }
 
 // decryptAsymmetric decrypts an encrypted payload with a private key.
-func (msg *ReceivedMessage) decryptAsymmetric(key *ecdsa.PrivateKey) error {
+func (msg *Message) decryptAsymmetric(key *ecdsa.PrivateKey) error {
 	decrypted, err := ecies.ImportECDSA(key).Decrypt(crand.Reader, msg.Raw, nil, nil)
 	if err == nil {
 		msg.Raw = decrypted
@@ -296,7 +403,7 @@ func (msg *ReceivedMessage) decryptAsymmetric(key *ecdsa.PrivateKey) error {
 }
 
 // Validate checks the validity and extracts the fields in case of success
-func (msg *ReceivedMessage) Validate() bool {
+func (msg *Message) Validate() bool {
 	end := len(msg.Raw)
 	if end < 1 {
 		return false
@@ -307,9 +414,9 @@ func (msg *ReceivedMessage) Validate() bool {
 		if end <= 1 {
 			return false
 		}
-		msg.Signature = msg.Raw[end:]
-		msg.Src = msg.SigToPubKey()
-		if msg.Src == nil {
+		msg.signature = msg.Raw[end:]
+		msg.src = msg.SigToPubKey()
+		if msg.src == nil {
 			return false
 		}
 	}
@@ -319,7 +426,7 @@ func (msg *ReceivedMessage) Validate() bool {
 		return false
 	}
 
-	msg.Payload = msg.Raw[1+padSize : end]
+	msg.payload = msg.Raw[1+padSize : end]
 	return true
 }
 
@@ -327,7 +434,7 @@ func (msg *ReceivedMessage) Validate() bool {
 // although we don't support sending messages with padding size
 // exceeding 255 bytes, such messages are perfectly valid, and
 // can be successfully decrypted.
-func (msg *ReceivedMessage) extractPadding(end int) (int, bool) {
+func (msg *Message) extractPadding(end int) (int, bool) {
 	paddingSize := 0
 	sz := int(msg.Raw[0] & paddingMask) // number of bytes indicating the entire size of padding (including these bytes)
 	// could be zero -- it means no padding
@@ -336,16 +443,16 @@ func (msg *ReceivedMessage) extractPadding(end int) (int, bool) {
 		if paddingSize < sz || paddingSize+1 > end {
 			return 0, false
 		}
-		msg.Padding = msg.Raw[1+sz : 1+paddingSize]
+		msg.padding = msg.Raw[1+sz : 1+paddingSize]
 	}
 	return paddingSize, true
 }
 
 // Recover retrieves the public key of the message signer.
-func (msg *ReceivedMessage) SigToPubKey() *ecdsa.PublicKey {
+func (msg *Message) SigToPubKey() *ecdsa.PublicKey {
 	defer func() { recover() }() // in case of invalid signature
 
-	pub, err := crypto.SigToPub(msg.hash(), msg.Signature)
+	pub, err := crypto.SigToPub(msg.hash(), msg.signature)
 	if err != nil {
 		log.Error("failed to recover public key from signature", "err", err)
 		return nil
@@ -354,10 +461,39 @@ func (msg *ReceivedMessage) SigToPubKey() *ecdsa.PublicKey {
 }
 
 // hash calculates the SHA3 checksum of the message flags, payload and padding.
-func (msg *ReceivedMessage) hash() []byte {
+func (msg *Message) hash() []byte {
 	if isMessageSigned(msg.Raw[0]) {
 		sz := len(msg.Raw) - signatureLength
 		return crypto.Keccak256(msg.Raw[:sz])
 	}
 	return crypto.Keccak256(msg.Raw)
+}
+
+// ToWhisperMessage converts an internal message into an API version.
+func (msg *Message) ToAPIMessage() *APIMessage {
+	apiMessage := APIMessage{
+		Payload:   msg.payload,
+		Padding:   msg.padding,
+		Timestamp: msg.Sent(),
+		TTL:       msg.TTL(),
+		PoW:       msg.PoW(),
+		Hash:      msg.envelope.Hash().Bytes(),
+		Topic:     msg.Topic(),
+	}
+
+	if msg.dst != nil {
+		b := crypto.FromECDSAPub(msg.dst)
+		if b != nil {
+			apiMessage.Dst = b
+		}
+	}
+
+	if isMessageSigned(msg.Raw[0]) {
+		b := crypto.FromECDSAPub(msg.SigToPubKey())
+		if b != nil {
+			apiMessage.Sig = b
+		}
+	}
+
+	return &apiMessage
 }

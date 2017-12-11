@@ -10,8 +10,8 @@ import (
 
 var _ = (*messageOverride)(nil)
 
-func (m Message) MarshalJSON() ([]byte, error) {
-	type Message struct {
+func (a APIMessage) MarshalJSON() ([]byte, error) {
+	type APIMessage struct {
 		Sig       hexutil.Bytes `json:"sig,omitempty"`
 		TTL       uint32        `json:"ttl"`
 		Timestamp uint32        `json:"timestamp"`
@@ -22,21 +22,21 @@ func (m Message) MarshalJSON() ([]byte, error) {
 		Hash      hexutil.Bytes `json:"hash"`
 		Dst       hexutil.Bytes `json:"recipientPublicKey,omitempty"`
 	}
-	var enc Message
-	enc.Sig = m.Sig
-	enc.TTL = m.TTL
-	enc.Timestamp = m.Timestamp
-	enc.Topic = m.Topic
-	enc.Payload = m.Payload
-	enc.Padding = m.Padding
-	enc.PoW = m.PoW
-	enc.Hash = m.Hash
-	enc.Dst = m.Dst
+	var enc APIMessage
+	enc.Sig = a.Sig
+	enc.TTL = a.TTL
+	enc.Timestamp = a.Timestamp
+	enc.Topic = a.Topic
+	enc.Payload = a.Payload
+	enc.Padding = a.Padding
+	enc.PoW = a.PoW
+	enc.Hash = a.Hash
+	enc.Dst = a.Dst
 	return json.Marshal(&enc)
 }
 
-func (m *Message) UnmarshalJSON(input []byte) error {
-	type Message struct {
+func (a *APIMessage) UnmarshalJSON(input []byte) error {
+	type APIMessage struct {
 		Sig       hexutil.Bytes `json:"sig,omitempty"`
 		TTL       *uint32       `json:"ttl"`
 		Timestamp *uint32       `json:"timestamp"`
@@ -47,36 +47,36 @@ func (m *Message) UnmarshalJSON(input []byte) error {
 		Hash      hexutil.Bytes `json:"hash"`
 		Dst       hexutil.Bytes `json:"recipientPublicKey,omitempty"`
 	}
-	var dec Message
+	var dec APIMessage
 	if err := json.Unmarshal(input, &dec); err != nil {
 		return err
 	}
 	if dec.Sig != nil {
-		m.Sig = dec.Sig
+		a.Sig = dec.Sig
 	}
 	if dec.TTL != nil {
-		m.TTL = *dec.TTL
+		a.TTL = *dec.TTL
 	}
 	if dec.Timestamp != nil {
-		m.Timestamp = *dec.Timestamp
+		a.Timestamp = *dec.Timestamp
 	}
 	if dec.Topic != nil {
-		m.Topic = *dec.Topic
+		a.Topic = *dec.Topic
 	}
 	if dec.Payload != nil {
-		m.Payload = dec.Payload
+		a.Payload = dec.Payload
 	}
 	if dec.Padding != nil {
-		m.Padding = dec.Padding
+		a.Padding = dec.Padding
 	}
 	if dec.PoW != nil {
-		m.PoW = *dec.PoW
+		a.PoW = *dec.PoW
 	}
 	if dec.Hash != nil {
-		m.Hash = dec.Hash
+		a.Hash = dec.Hash
 	}
 	if dec.Dst != nil {
-		m.Dst = dec.Dst
+		a.Dst = dec.Dst
 	}
 	return nil
 }
