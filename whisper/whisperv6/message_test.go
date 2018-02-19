@@ -82,12 +82,13 @@ func singleMessageTest(t *testing.T, symmetric bool) {
 		t.Fatalf("failed Wrap with seed %d: %s.", seed, err)
 	}
 
-	var decrypted *ReceivedMessage
+	var opened ReceivedMessage
 	if symmetric {
-		decrypted, err = env.OpenSymmetric(params.KeySym)
+		opened, err = env.OpenSymmetric(params.KeySym)
 	} else {
-		decrypted, err = env.OpenAsymmetric(key)
+		opened, err = env.OpenAsymmetric(key)
 	}
+	decrypted := opened.(*WhisperMessage)
 
 	if err != nil {
 		t.Fatalf("failed to encrypt with seed %d: %s.", seed, err)
@@ -249,10 +250,11 @@ func singleEnvelopeOpenTest(t *testing.T, symmetric bool) {
 	} else {
 		f = Filter{KeyAsym: key}
 	}
-	decrypted := env.Open(&f)
-	if decrypted == nil {
+	opened := env.Open(&f)
+	if opened == nil {
 		t.Fatalf("failed to open with seed %d.", seed)
 	}
+	decrypted := opened.(*WhisperMessage)
 
 	if !bytes.Equal(text, decrypted.Payload) {
 		t.Fatalf("failed with seed %d: compare payload.", seed)
@@ -388,10 +390,11 @@ func singlePaddingTest(t *testing.T, padSize int) {
 		t.Fatalf("failed to wrap, seed: %d and sz=%d.", seed, padSize)
 	}
 	f := Filter{KeySym: params.KeySym}
-	decrypted := env.Open(&f)
-	if decrypted == nil {
+	opened := env.Open(&f)
+	if opened == nil {
 		t.Fatalf("failed to open, seed and sz=%d: %d.", seed, padSize)
 	}
+	decrypted := opened.(*WhisperMessage)
 	if !bytes.Equal(pad, decrypted.Padding) {
 		t.Fatalf("padding is not retireved as expected with seed %d and sz=%d:\n[%x]\n[%x].", seed, padSize, pad, decrypted.Padding)
 	}
@@ -437,7 +440,7 @@ func TestPaddingAppendedToSymMessagesWithSignature(t *testing.T) {
 	// Simulate a message with a payload just under 256 so that
 	// payload + flag + signature > 256. Check that the result
 	// is padded on the next 256 boundary.
-	msg := sentMessage{}
+	msg := WhisperMessage{}
 	const payloadSizeFieldMinSize = 1
 	msg.Raw = make([]byte, flagsLength+payloadSizeFieldMinSize+len(params.Payload))
 

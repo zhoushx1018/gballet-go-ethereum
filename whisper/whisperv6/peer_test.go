@@ -301,10 +301,10 @@ func checkPropagation(t *testing.T, includingNodeZero bool) {
 	t.Fatalf("Test was not complete (%d round): timeout %d seconds. nodes=%v", round, iterations*cycle/1000, nodes)
 }
 
-func validateMail(t *testing.T, index int, mail []*ReceivedMessage) {
+func validateMail(t *testing.T, index int, mail []ReceivedMessage) {
 	var cnt int
 	for _, m := range mail {
-		if bytes.Equal(m.Payload, expectedMessage) {
+		if bytes.Equal(m.(*WhisperMessage).Payload, expectedMessage) {
 			cnt++
 		}
 	}

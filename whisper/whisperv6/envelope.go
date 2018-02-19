@@ -62,12 +62,12 @@ func (e *Envelope) rlpWithoutNonce() []byte {
 
 // NewEnvelope wraps a Whisper message with expiration and destination data
 // included into an envelope for network forwarding.
-func NewEnvelope(ttl uint32, topic TopicType, msg *sentMessage) *Envelope {
+func NewEnvelope(ttl uint32, topic TopicType, msg SentMessage) *Envelope {
 	env := Envelope{
 		Expiry: uint32(time.Now().Add(time.Second * time.Duration(ttl)).Unix()),
 		TTL:    ttl,
 		Topic:  topic,
-		Data:   msg.Raw,
+		Data:   msg.GetRaw(),
 		Nonce:  0,
 	}
 
@@ -183,11 +183,12 @@ func (e *Envelope) DecodeRLP(s *rlp.Stream) error {
 }
 
 // OpenAsymmetric tries to decrypt an envelope, potentially encrypted with a particular key.
-func (e *Envelope) OpenAsymmetric(key *ecdsa.PrivateKey) (*ReceivedMessage, error) {
-	message := &ReceivedMessage{Raw: e.Data}
+func (e *Envelope) OpenAsymmetric(key *ecdsa.PrivateKey) (ReceivedMessage, error) {
+	message := &WhisperMessage{Raw: e.Data}
 	err := message.decryptAsymmetric(key)
 	switch err {
 	case nil:
+		message.Dst = &key.PublicKey
 		return message, nil
 	case ecies.ErrInvalidPublicKey: // addressed to somebody else
 		return nil, err
@@ -197,17 +198,20 @@ func (e *Envelope) OpenAsymmetric(key *ecdsa.PrivateKey) (*ReceivedMessage, erro
 }
 
 // OpenSymmetric tries to decrypt an envelope, potentially encrypted with a particular key.
-func (e *Envelope) OpenSymmetric(key []byte) (msg *ReceivedMessage, err error) {
-	msg = &ReceivedMessage{Raw: e.Data}
-	err = msg.decryptSymmetric(key)
+func (e *Envelope) OpenSymmetric(key []byte) (ReceivedMessage, error) {
+	msg := &WhisperMessage{Raw: e.Data}
+	err := msg.decryptSymmetric(key)
 	if err != nil {
 		msg = nil
 	}
+	msg.SymKeyHash = crypto.Keccak256Hash(key)
 	return msg, err
 }
 
 // Open tries to decrypt an envelope, and populates the message fields in case of success.
-func (e *Envelope) Open(watcher *Filter) (msg *ReceivedMessage) {
+func (e *Envelope) Open(watcher *Filter) (ReceivedMessage) {
+	var msg ReceivedMessage
+
 	// The API interface forbids filters doing both symmetric and asymmetric encryption.
 	if watcher.expectsAsymmetricEncryption() && watcher.expectsSymmetricEncryption() {
 		return nil
@@ -215,14 +219,8 @@ func (e *Envelope) Open(watcher *Filter) (msg *ReceivedMessage) {
 
 	if watcher.expectsAsymmetricEncryption() {
 		msg, _ = e.OpenAsymmetric(watcher.KeyAsym)
-		if msg != nil {
-			msg.Dst = &watcher.KeyAsym.PublicKey
-		}
 	} else if watcher.expectsSymmetricEncryption() {
 		msg, _ = e.OpenSymmetric(watcher.KeySym)
-		if msg != nil {
-			msg.SymKeyHash = crypto.Keccak256Hash(watcher.KeySym)
-		}
 	}
 
 	if msg != nil {
@@ -230,11 +228,11 @@ func (e *Envelope) Open(watcher *Filter) (msg *ReceivedMessage) {
 		if !ok {
 			return nil
 		}
-		msg.Topic = e.Topic
-		msg.PoW = e.PoW()
-		msg.TTL = e.TTL
-		msg.Sent = e.Expiry - e.TTL
-		msg.EnvelopeHash = e.Hash()
+		msg.SetTopic(e.Topic)
+		msg.SetPoW(e.PoW())
+		msg.SetTTL(e.TTL)
+		msg.SetSentTime(e.Expiry - e.TTL)
+		msg.SetEnvelopeHash(e.Hash())
 	}
 	return msg
 }

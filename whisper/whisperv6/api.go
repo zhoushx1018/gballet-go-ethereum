@@ -357,7 +357,7 @@ func (api *PublicWhisperAPI) Messages(ctx context.Context, crit Criteria) (*rpc.
 
 	filter := Filter{
 		PoW:      crit.MinPow,
-		Messages: make(map[common.Hash]*ReceivedMessage),
+		Messages: make(map[common.Hash]ReceivedMessage),
 		AllowP2P: crit.AllowP2P,
 	}
 
@@ -457,40 +457,11 @@ type messageOverride struct {
 	Dst     hexutil.Bytes
 }
 
-// ToWhisperMessage converts an internal message into an API version.
-func ToWhisperMessage(message *ReceivedMessage) *Message {
-	msg := Message{
-		Payload:   message.Payload,
-		Padding:   message.Padding,
-		Timestamp: message.Sent,
-		TTL:       message.TTL,
-		PoW:       message.PoW,
-		Hash:      message.EnvelopeHash.Bytes(),
-		Topic:     message.Topic,
-	}
-
-	if message.Dst != nil {
-		b := crypto.FromECDSAPub(message.Dst)
-		if b != nil {
-			msg.Dst = b
-		}
-	}
-
-	if isMessageSigned(message.Raw[0]) {
-		b := crypto.FromECDSAPub(message.SigToPubKey())
-		if b != nil {
-			msg.Sig = b
-		}
-	}
-
-	return &msg
-}
-
 // toMessage converts a set of messages to its RPC representation.
-func toMessage(messages []*ReceivedMessage) []*Message {
+func toMessage(messages []ReceivedMessage) []*Message {
 	msgs := make([]*Message, len(messages))
 	for i, msg := range messages {
-		msgs[i] = ToWhisperMessage(msg)
+		msgs[i] = msg.ToRPCMessage()
 	}
 	return msgs
 }
@@ -510,7 +481,7 @@ func (api *PublicWhisperAPI) GetFilterMessages(id string) ([]*Message, error) {
 	receivedMessages := f.Retrieve()
 	messages := make([]*Message, 0, len(receivedMessages))
 	for _, msg := range receivedMessages {
-		messages = append(messages, ToWhisperMessage(msg))
+		messages = append(messages, msg.ToRPCMessage())
 	}
 
 	return messages, nil
@@ -581,7 +552,7 @@ func (api *PublicWhisperAPI) NewMessageFilter(req Criteria) (string, error) {
 		PoW:      req.MinPow,
 		AllowP2P: req.AllowP2P,
 		Topics:   topics,
-		Messages: make(map[common.Hash]*ReceivedMessage),
+		Messages: make(map[common.Hash]ReceivedMessage),
 	}
 
 	id, err := api.w.Subscribe(f)

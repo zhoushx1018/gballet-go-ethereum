@@ -36,7 +36,7 @@ type Filter struct {
 	AllowP2P   bool              // Indicates whether this filter is interested in direct peer-to-peer messages
 	SymKeyHash common.Hash       // The Keccak256Hash of the symmetric key, needed for optimization
 
-	Messages map[common.Hash]*ReceivedMessage
+	Messages map[common.Hash]ReceivedMessage
 	mutex    sync.RWMutex
 }
 
@@ -62,7 +62,7 @@ func (fs *Filters) Install(watcher *Filter) (string, error) {
 	}
 
 	if watcher.Messages == nil {
-		watcher.Messages = make(map[common.Hash]*ReceivedMessage)
+		watcher.Messages = make(map[common.Hash]ReceivedMessage)
 	}
 
 	id, err := GenerateRandomID()
@@ -107,7 +107,7 @@ func (fs *Filters) Get(id string) *Filter {
 // NotifyWatchers notifies any filter that has declared interest
 // for the envelope's topic.
 func (fs *Filters) NotifyWatchers(env *Envelope, p2pMessage bool) {
-	var msg *ReceivedMessage
+	var msg ReceivedMessage
 
 	fs.mutex.RLock()
 	defer fs.mutex.RUnlock()
@@ -137,14 +137,14 @@ func (fs *Filters) NotifyWatchers(env *Envelope, p2pMessage bool) {
 
 		if match && msg != nil {
 			log.Trace("processing message: decrypted", "hash", env.Hash().Hex())
-			if watcher.Src == nil || IsPubKeyEqual(msg.Src, watcher.Src) {
+			if watcher.Src == nil || IsPubKeyEqual(msg.GetSrc(), watcher.Src) {
 				watcher.Trigger(msg)
 			}
 		}
 	}
 }
 
-func (f *Filter) processEnvelope(env *Envelope) *ReceivedMessage {
+func (f *Filter) processEnvelope(env *Envelope) ReceivedMessage {
 	if f.MatchEnvelope(env) {
 		msg := env.Open(f)
 		if msg != nil {
@@ -168,42 +168,42 @@ func (f *Filter) expectsSymmetricEncryption() bool {
 
 // Trigger adds a yet-unknown message to the filter's list of
 // received messages.
-func (f *Filter) Trigger(msg *ReceivedMessage) {
+func (f *Filter) Trigger(msg ReceivedMessage) {
 	f.mutex.Lock()
 	defer f.mutex.Unlock()
 
-	if _, exist := f.Messages[msg.EnvelopeHash]; !exist {
-		f.Messages[msg.EnvelopeHash] = msg
+	if _, exist := f.Messages[msg.GetEnvelopeHash()]; !exist {
+		f.Messages[msg.GetEnvelopeHash()] = msg
 	}
 }
 
 // Retrieve will return the list of all received messages associated
 // to a filter.
-func (f *Filter) Retrieve() (all []*ReceivedMessage) {
+func (f *Filter) Retrieve() (all []ReceivedMessage) {
 	f.mutex.Lock()
 	defer f.mutex.Unlock()
 
-	all = make([]*ReceivedMessage, 0, len(f.Messages))
+	all = make([]ReceivedMessage, 0, len(f.Messages))
 	for _, msg := range f.Messages {
 		all = append(all, msg)
 	}
 
-	f.Messages = make(map[common.Hash]*ReceivedMessage) // delete old messages
+	f.Messages = make(map[common.Hash]ReceivedMessage) // delete old messages
 	return all
 }
 
 // MatchMessage checks if the filter matches an already decrypted
 // message (i.e. a Message that has already been handled by
 // MatchEnvelope when checked by a previous filter)
-func (f *Filter) MatchMessage(msg *ReceivedMessage) bool {
-	if f.PoW > 0 && msg.PoW < f.PoW {
+func (f *Filter) MatchMessage(msg ReceivedMessage) bool {
+	if f.PoW > 0 && msg.GetPoW() < f.PoW {
 		return false
 	}
 
 	if f.expectsAsymmetricEncryption() && msg.isAsymmetricEncryption() {
-		return IsPubKeyEqual(&f.KeyAsym.PublicKey, msg.Dst) && f.MatchTopic(msg.Topic)
+		return IsPubKeyEqual(&f.KeyAsym.PublicKey, msg.GetDst()) && f.MatchTopic(msg.GetTopic())
 	} else if f.expectsSymmetricEncryption() && msg.isSymmetricEncryption() {
-		return f.SymKeyHash == msg.SymKeyHash && f.MatchTopic(msg.Topic)
+		return f.SymKeyHash == msg.GetSymKeyHash() && f.MatchTopic(msg.GetTopic())
 	}
 	return false
 }
