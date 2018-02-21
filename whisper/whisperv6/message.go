@@ -48,6 +48,8 @@ type MessageParams struct {
 	Padding  []byte
 }
 
+// ReadableMessage specifies what accessor methods a Whisper message
+// should have.
 type ReadableMessage interface {
 	GetRaw() []byte
 	GetPoW() float64
@@ -58,6 +60,8 @@ type ReadableMessage interface {
 	GetSymKeyHash() common.Hash
 }
 
+// RPCSerializableMessage specifies what serialization methods a
+// Whisper message should have.
 type RPCSerializableMessage interface {
 	ToRPCMessage() *Message
 }
@@ -401,50 +405,74 @@ func (msg *WhisperMessage) hash() []byte {
 	return crypto.Keccak256(msg.Raw)
 }
 
+// GetRaw implements the ReadableMessage function to recover
+// the message's raw data
 func (msg *WhisperMessage) GetRaw() []byte {
 	return msg.Raw
 }
 
+// GetPoW implements the ReadableMessage function to recover
+// the message's PoW target
 func (msg *WhisperMessage) GetPoW() float64 {
 	return msg.PoW
 }
 
+// GetTopic implements the ReadableMessage function to recover
+// the message's topic
 func (msg *WhisperMessage) GetTopic() TopicType {
 	return msg.Topic
 }
 
+// GetEnvelopeHash implements the ReadableMessage function to recover
+// the envelope hash
 func (msg *WhisperMessage) GetEnvelopeHash() common.Hash {
 	return msg.EnvelopeHash
 }
 
+// GetSymKeyHash implements the ReadableMessage function to recover
+// the message's has of its symmetric key
 func (msg *WhisperMessage) GetSymKeyHash() common.Hash {
 	return msg.SymKeyHash
 }
 
+// GetSrc implements the ReadableMessage function to recover
+// the message's source's public key
 func (msg *WhisperMessage) GetSrc() *ecdsa.PublicKey {
 	return msg.Src
 }
 
+// GetDst implements the ReadableMessage function to recover
+// the message's destination's public key
 func (msg *WhisperMessage) GetDst() *ecdsa.PublicKey {
 	return msg.Dst
 }
 
+// SetTopic implements the EditableMessage function to recover
+// the message's topic
 func (msg *WhisperMessage) SetTopic(topic TopicType) {
 	msg.Topic = topic
 }
 
+// SetPoW implements the EditableMessage function to recover
+// the message's PoW trget
 func (msg *WhisperMessage) SetPoW(powTarget float64) {
 	msg.PoW = powTarget
 }
 
+// SetTTL implements the EditableMessage function to recover
+// the message's time to live
 func (msg *WhisperMessage) SetTTL(ttl uint32) {
 	msg.TTL = ttl
 }
 
+// SetSentTime implements the EditableMessage function to recover
+// the time at which a message was sent
 func (msg *WhisperMessage) SetSentTime(sentTime uint32) {
 	msg.Sent = sentTime
 }
 
+// SetEnvelopeHash implements the EditableMessage function to recover
+// the message's envelope hash
 func (msg *WhisperMessage) SetEnvelopeHash(h common.Hash) {
 	msg.EnvelopeHash = h
 }
