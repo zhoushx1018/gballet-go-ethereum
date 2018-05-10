@@ -14,22 +14,30 @@
 // You should have received a copy of the GNU Lesser General Public License
 // along with the go-ethereum library. If not, see <http://www.gnu.org/licenses/>.
 
-package p2p
+package libp2p
 
 import (
-	"net"
-
-	"github.com/ethereum/go-ethereum/p2p/discover"
+	"sync"
+	"github.com/ethereum/go-ethereum/p2p"
+	host "github.com/libp2p/go-libp2p-host"
 )
 
-type Peer interface {
-	ID() discover.NodeID
-	Name() string
-	Caps() []Cap
-	RemoteAddr() net.Addr
-	LocalAddr() net.Addr
+type Server struct {
+    Protocols []p2p.Protocol
+	// ...
+	
+	Host host.Host // Libp2p host structure
 
-	Disconnect(reason DiscReason)
-	String() string
-	Inbound() bool
+	PeerMutex sync.RWMutex  // Guard the list of active peers
+	Peers     []*Peer // List of active peers
+}
+
+func (s *Server) init() {
+    for _, p := range s.Protocols {
+        name := fmt.Sprintf("devp2p/%s/%d", p.Name, p.Version)
+        server.Host.SetStreamHandler(name, func(stream inet.Stream) {
+            // peer := p2p.NewPeer(...)
+            go p.Run(peer, &devp2pStreamWrapper{stream})
+        })
+    }
 }
