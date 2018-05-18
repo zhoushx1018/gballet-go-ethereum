@@ -42,6 +42,7 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/p2p"
 	"github.com/ethereum/go-ethereum/p2p/discover"
+	"github.com/ethereum/go-ethereum/p2p/libp2p"
 	"github.com/ethereum/go-ethereum/p2p/nat"
 	"github.com/ethereum/go-ethereum/whisper/mailserver"
 	whisper "github.com/ethereum/go-ethereum/whisper/whisperv6"
@@ -54,6 +55,7 @@ const entropySize = 32
 // singletons
 var (
 	server     *p2p.Server
+	lp2pserver *libp2p.Server
 	shh        *whisper.Whisper
 	done       chan struct{}
 	mailServer mailserver.WMailServer
@@ -276,26 +278,38 @@ func initialize() {
 		}
 	}
 
-	server = &p2p.Server{
-		Config: p2p.Config{
-			PrivateKey:     nodeid,
-			MaxPeers:       maxPeers,
-			Name:           common.MakeName("wnode", "6.0"),
-			Protocols:      shh.Protocols(),
-			ListenAddr:     *argIP,
-			NAT:            nat.Any(),
-			BootstrapNodes: peers,
-			StaticNodes:    peers,
-			TrustedNodes:   peers,
-		},
+	if false {
+		server = &p2p.Server{
+			Config: p2p.Config{
+				PrivateKey:     nodeid,
+				MaxPeers:       maxPeers,
+				Name:           common.MakeName("wnode", "6.0"),
+				Protocols:      shh.Protocols(),
+				ListenAddr:     *argIP,
+				NAT:            nat.Any(),
+				BootstrapNodes: peers,
+				StaticNodes:    peers,
+				TrustedNodes:   peers,
+			},
+		}
+	} else {
+		lp2pserver, err = libp2p.NewServer(shh.Protocols(), 3003)
+		if err != nil {
+			utils.Fatalf("Failed to initialize libp2p server: %v", err)
+		}
+		lp2pserver.Init()
 	}
 }
 
 func startServer() error {
-	err := server.Start()
-	if err != nil {
-		fmt.Printf("Failed to start Whisper peer: %s.", err)
-		return err
+	if false {
+		err := server.Start()
+		if err != nil {
+			fmt.Printf("Failed to start Whisper peer: %s.", err)
+			return err
+		}
+	} else {
+		lp2pserver.Init()
 	}
 
 	fmt.Printf("my public key: %s \n", common.ToHex(crypto.FromECDSAPub(&asymKey.PublicKey)))

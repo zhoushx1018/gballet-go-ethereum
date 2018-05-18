@@ -32,6 +32,7 @@ import (
 	"github.com/ethereum/go-ethereum/internal/debug"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/p2p"
+	"github.com/ethereum/go-ethereum/p2p/libp2p"
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/prometheus/prometheus/util/flock"
 )
@@ -190,12 +191,27 @@ func (n *Node) Start() error {
 		services[kind] = service
 	}
 	// Gather the protocols and start the freshly assembled P2P server
+	lp2pProtocols := make([]p2p.Protocol /* XXX 0, */, 1)
 	for _, service := range services {
-		running.Protocols = append(running.Protocols, service.Protocols()...)
+		for _, proto := range service.Protocols() {
+			if proto.LibP2P {
+				lp2pProtocols = append(lp2pProtocols, proto)
+			} else {
+				running.Protocols = append(running.Protocols, proto)
+			}
+		}
 	}
 	if err := running.Start(); err != nil {
 		return convertFileLockError(err)
 	}
+	// Start the libp2p version
+	lp2pServer, err := libp2p.NewServer(lp2pProtocols /* XXX */, 3003)
+	if err != nil {
+		running.Stop()
+		return fmt.Errorf("Unable to start the libp2p server")
+	}
+	lp2pServer.Init()
+
 	// Start each of the services
 	started := []reflect.Type{}
 	for kind, service := range services {

@@ -35,6 +35,10 @@ type Protocol struct {
 	// by the protocol.
 	Length uint64
 
+	// LibP2P is a temporary flag that specifies if the protocol
+	// should be run from the libp2p network.
+	LibP2P bool
+
 	// Run is called in a new groutine when the protocol has been
 	// negotiated with a peer. It should read and write messages from
 	// rw. The Payload for each message must be fully consumed.
