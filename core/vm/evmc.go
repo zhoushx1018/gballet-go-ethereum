@@ -316,7 +316,7 @@ func (evm *EVMC) Run(contract *Contract, input []byte, readOnly bool) (ret []byt
 
 func (evm *EVMC) CanRun(code []byte) bool {
 	cap := evmc.CapabilityEVM1
-	wasmPreamble := []byte("\x00asm\x01\x00\x00\x00")
+	wasmPreamble := []byte("\x00asm")
 	if bytes.HasPrefix(code, wasmPreamble) {
 		cap = evmc.CapabilityEWASM
 	}
