@@ -311,6 +311,13 @@ func (evm *EVMC) Run(contract *Contract, input []byte, readOnly bool) (ret []byt
 		panic(fmt.Sprintf("EVMC VM internal error: %s", evmcError.Error()))
 	}
 
+	if len(output) > params.MaxCodeSize {
+		if err != errExecutionReverted {
+			contract.UseGas(uint64(gasLeft))
+		}
+		err = errMaxCodeSizeExceeded
+	}
+
 	return output, err
 }
 
