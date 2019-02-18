@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"math/big"
 	"reflect"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/math"
@@ -40,6 +41,7 @@ import (
 type PrecompiledContract interface {
 	RequiredGas(input []byte) uint64                      // RequiredPrice calculates the contract gas use
 	Run(input []byte, contract *Contract) ([]byte, error) // Run runs the precompiled contract
+	Addr() int
 }
 
 // PrecompiledContractsHomestead contains the default set of pre-compiled Ethereum
@@ -77,11 +79,48 @@ var PrecompiledContractsEWASM = map[common.Address]PrecompiledContract{
 	common.BytesToAddress([]byte{8}): newEWASMPrecompile(ewasmEcpairingCode, 8),
 }
 
+var percontractW [9]int64
+var percontractN [9]int64
+var count [9]int64
+var totalcount = 0
+var nerrors [9]int64
+
 // RunPrecompiledContract runs and evaluates the output of a precompiled contract.
 func RunPrecompiledContract(p PrecompiledContract, input []byte, contract *Contract) (ret []byte, err error) {
+	totalcount++
+	defer func() {
+		if totalcount%100 == 0 {
+			fmt.Print("~~~~~ Averages: ")
+			for i, t := range percontractW {
+				avgW, avgN := float64(0), float64(0)
+				if count[i] != 0 {
+					avgW = float64(t) / float64(count[i])
+					avgN = float64(percontractN[i]) / float64(count[i])
+				}
+				fmt.Print(" ", i, "=", avgW, avgN)
+			}
+			fmt.Println("nerr=", nerrors, "total", totalcount)
+		}
+	}()
+
 	gas := p.RequiredGas(input)
-	if contract.UseGas(gas) {
-		return p.Run(input, contract)
+	if gas <= contract.Gas {
+		start := time.Now().UnixNano()
+		ref, rerr := p.Run(input, contract)
+		native := time.Now().UnixNano()
+		// fmt.Println("standard result:", ref, rerr)
+		res, err := PrecompiledContractsEWASM[common.BigToAddress(big.NewInt(int64(p.Addr())))].Run(input, contract)
+		end := time.Now().UnixNano()
+		percontractW[p.Addr()] += end - native
+		percontractN[p.Addr()] += native - start
+		count[p.Addr()]++
+		// fmt.Println("precompile result:", res, err)
+		if (err == nil) != (rerr == nil) || bytes.Compare(res, ref) != 0 {
+			fmt.Println("&&&&&&&&&&&&&&&&&&&&& Difference for conract ", p.Addr(), res, ref, err, rerr, input, p.Addr(), contract.Address())
+			panic("coucou")
+		} else {
+			return res, err
+		}
 	}
 	return nil, ErrOutOfGas
 }
@@ -91,6 +130,7 @@ type ewasmPrecompile struct {
 	vm       *exec.VM
 	contract *Contract
 	retData  []byte
+	addr     int
 	idx      uint32
 	input    []byte
 }
@@ -137,6 +177,7 @@ func moduleResolver(name string, precompile *ewasmPrecompile) (*wasm.Module, err
 		{
 			Sig: &m.Types.Entries[0],
 			Host: reflect.ValueOf(func(p *exec.Process, a int64) {
+				// fmt.Println("use gas", a)
 				precompile.contract.UseGas(uint64(a))
 			}),
 			Body: &wasm.FunctionBody{},
@@ -156,6 +197,7 @@ func moduleResolver(name string, precompile *ewasmPrecompile) (*wasm.Module, err
 		{
 			Sig: &m.Types.Entries[3],
 			Host: reflect.ValueOf(func(p *exec.Process) int32 {
+				// fmt.Println("data size",  int32(len(precompile.input)))
 				return int32(len(precompile.input))
 			}),
 			Body: &wasm.FunctionBody{},
@@ -163,6 +205,7 @@ func moduleResolver(name string, precompile *ewasmPrecompile) (*wasm.Module, err
 		{
 			Sig: &m.Types.Entries[1],
 			Host: reflect.ValueOf(func(p *exec.Process, d, l int32) {
+				// fmt.Println("finish", d, l)
 				precompile.retData = make([]byte, int64(l))
 				p.ReadAt(precompile.retData, int64(d))
 				p.Terminate()
@@ -172,6 +215,7 @@ func moduleResolver(name string, precompile *ewasmPrecompile) (*wasm.Module, err
 		{
 			Sig: &m.Types.Entries[1],
 			Host: reflect.ValueOf(func(p *exec.Process, d, l int32) {
+				fmt.Println("revert")
 				precompile.retData = make([]byte, int64(l))
 				p.ReadAt(precompile.retData, int64(d))
 				p.Terminate()
@@ -197,7 +241,7 @@ func moduleResolver(name string, precompile *ewasmPrecompile) (*wasm.Module, err
 	return m, nil
 }
 
-func newEWASMPrecompile(code []byte) *ewasmPrecompile {
+func newEWASMPrecompile(code []byte, addr int) *ewasmPrecompile {
 	ret := &ewasmPrecompile{}
 	module, err := wasm.ReadModule(bytes.NewReader(code), func(s string) (*wasm.Module, error) {
 		return moduleResolver(s, ret)
@@ -218,12 +262,17 @@ func newEWASMPrecompile(code []byte) *ewasmPrecompile {
 	}
 	vm.RecoverPanic = true
 	ret.vm = vm
+	ret.addr = addr
 
 	return ret
 }
 
 func (c *ewasmPrecompile) RequiredGas(input []byte) uint64 {
 	return 0
+}
+
+func (c *ewasmPrecompile) Addr() int {
+	return c.addr
 }
 
 func (c *ewasmPrecompile) Run(input []byte, contract *Contract) ([]byte, error) {
@@ -257,6 +306,10 @@ func (c *ecrecover) RequiredGas(input []byte) uint64 {
 	return params.EcrecoverGas
 }
 
+func (c *ecrecover) Addr() int {
+	return 1
+}
+
 func (c *ecrecover) Run(input []byte, contract *Contract) ([]byte, error) {
 	const ecRecoverInputLength = 128
 
@@ -270,6 +323,7 @@ func (c *ecrecover) Run(input []byte, contract *Contract) ([]byte, error) {
 
 	// tighter sig s values input homestead only apply to tx sigs
 	if !allZero(input[32:63]) || !crypto.ValidateSignatureValues(v, r, s, false) {
+		fmt.Println(input[32:63], v)
 		return nil, nil
 	}
 
@@ -299,6 +353,10 @@ func (c *sha256hash) Run(input []byte, contract *Contract) ([]byte, error) {
 	return h[:], nil
 }
 
+func (c *sha256hash) Addr() int {
+	return 2
+}
+
 // RIPEMD160 implemented as a native contract.
 type ripemd160hash struct{}
 
@@ -309,6 +367,11 @@ type ripemd160hash struct{}
 func (c *ripemd160hash) RequiredGas(input []byte) uint64 {
 	return uint64(len(input)+31)/32*params.Ripemd160PerWordGas + params.Ripemd160BaseGas
 }
+
+func (c *ripemd160hash) Addr() int {
+	return 3
+}
+
 func (c *ripemd160hash) Run(input []byte, contract *Contract) ([]byte, error) {
 	ripemd := ripemd160.New()
 	ripemd.Write(input)
@@ -327,6 +390,10 @@ func (c *dataCopy) RequiredGas(input []byte) uint64 {
 }
 func (c *dataCopy) Run(in []byte, contract *Contract) ([]byte, error) {
 	return in, nil
+}
+
+func (c *dataCopy) Addr() int {
+	return 4
 }
 
 // bigModExp implements a native big integer exponential modular operation.
@@ -353,6 +420,7 @@ func (c *bigModExp) RequiredGas(input []byte) uint64 {
 		expLen  = new(big.Int).SetBytes(getData(input, 32, 32))
 		modLen  = new(big.Int).SetBytes(getData(input, 64, 32))
 	)
+	// fmt.Println(input, baseLen, expLen, modLen)
 	if len(input) > 96 {
 		input = input[96:]
 	} else {
@@ -382,6 +450,7 @@ func (c *bigModExp) RequiredGas(input []byte) uint64 {
 	adjExpLen.Add(adjExpLen, big.NewInt(int64(msb)))
 
 	// Calculate the gas cost of the operation
+	// fmt.Println(math.BigMax(modLen, baseLen))
 	gas := new(big.Int).Set(math.BigMax(modLen, baseLen))
 	switch {
 	case gas.Cmp(big64) <= 0:
@@ -403,6 +472,7 @@ func (c *bigModExp) RequiredGas(input []byte) uint64 {
 	if gas.BitLen() > 64 {
 		return math.MaxUint64
 	}
+	// fmt.Println("gas==", gas, gas.Uint64())
 	return gas.Uint64()
 }
 
@@ -427,11 +497,16 @@ func (c *bigModExp) Run(input []byte, contract *Contract) ([]byte, error) {
 		exp  = new(big.Int).SetBytes(getData(input, baseLen, expLen))
 		mod  = new(big.Int).SetBytes(getData(input, baseLen+expLen, modLen))
 	)
+	// fmt.Println("expmod", base, exp, mod)
 	if mod.BitLen() == 0 {
 		// Modulo 0 is undefined, return zero
 		return common.LeftPadBytes([]byte{}, int(modLen)), nil
 	}
 	return common.LeftPadBytes(base.Exp(base, exp, mod).Bytes(), int(modLen)), nil
+}
+
+func (c *bigModExp) Addr() int {
+	return 5
 }
 
 // newCurvePoint unmarshals a binary blob into a bn256 elliptic curve point,
@@ -457,6 +532,10 @@ func newTwistPoint(blob []byte) (*bn256.G2, error) {
 // bn256Add implements a native elliptic curve point addition.
 type bn256Add struct{}
 
+func (c *bn256Add) Addr() int {
+	return 6
+}
+
 // RequiredGas returns the gas required to execute the pre-compiled contract.
 func (c *bn256Add) RequiredGas(input []byte) uint64 {
 	return params.Bn256AddGas
@@ -478,6 +557,10 @@ func (c *bn256Add) Run(input []byte, contract *Contract) ([]byte, error) {
 
 // bn256ScalarMul implements a native elliptic curve scalar multiplication.
 type bn256ScalarMul struct{}
+
+func (c *bn256ScalarMul) Addr() int {
+	return 7
+}
 
 // RequiredGas returns the gas required to execute the pre-compiled contract.
 func (c *bn256ScalarMul) RequiredGas(input []byte) uint64 {
@@ -507,6 +590,10 @@ var (
 
 // bn256Pairing implements a pairing pre-compile for the bn256 curve
 type bn256Pairing struct{}
+
+func (c *bn256Pairing) Addr() int {
+	return 8
+}
 
 // RequiredGas returns the gas required to execute the pre-compiled contract.
 func (c *bn256Pairing) RequiredGas(input []byte) uint64 {

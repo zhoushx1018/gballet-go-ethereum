@@ -17,6 +17,7 @@
 package vm
 
 import (
+	// "fmt"
 	"math/big"
 	"sync/atomic"
 	"time"
@@ -47,10 +48,11 @@ func run(evm *EVM, contract *Contract, input []byte, readOnly bool) ([]byte, err
 		if evm.ChainConfig().IsByzantium(evm.BlockNumber) {
 			precompiles = PrecompiledContractsByzantium
 		}
-		if evm.ChainConfig().IsEWASM(evm.BlockNumber) {
+		/*if evm.ChainConfig().IsEWASM(evm.BlockNumber) {
 			precompiles = PrecompiledContractsEWASM
-		}
+		}*/
 		if p := precompiles[*contract.CodeAddr]; p != nil {
+			// fmt.Println("avant le precompile", evm.BlockNumber, "depth=", evm.depth, evm.GasLimit, evm.Context.Origin.Hex())
 			return RunPrecompiledContract(p, input, contract)
 		}
 	}
@@ -142,7 +144,7 @@ func NewEVM(ctx Context, statedb StateDB, chainConfig *params.ChainConfig, vmCon
 		interpreters: make([]Interpreter, 0, 1),
 	}
 
-	if chainConfig.IsEWASM(ctx.BlockNumber) {
+	/*if chainConfig.IsEWASM(ctx.BlockNumber) {
 		// to be implemented by EVM-C and Wagon PRs.
 		// if vmConfig.EWASMInterpreter != "" {
 		//  extIntOpts := strings.Split(vmConfig.EWASMInterpreter, ":")
@@ -156,7 +158,7 @@ func NewEVM(ctx Context, statedb StateDB, chainConfig *params.ChainConfig, vmCon
 		// 	evm.interpreters = append(evm.interpreters, NewEWASMInterpreter(evm, vmConfig))
 		// }
 		panic("No supported ewasm interpreter yet.")
-	}
+	}*/
 
 	// vmConfig.EVMInterpreter will be used by EVM-C, it won't be checked here
 	// as we always want to have the built-in EVM as the failover option.
