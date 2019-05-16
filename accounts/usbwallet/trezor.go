@@ -34,7 +34,10 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/golang/protobuf/proto"
+	"github.com/karalabe/hid"
 )
+
+var ErrInvalidDeviceType = errors.New("trezor: invalid device type")
 
 // ErrTrezorPINNeeded is returned if opening the trezor requires a PIN code. In
 // this case, the calling application should display a pinpad and send back the

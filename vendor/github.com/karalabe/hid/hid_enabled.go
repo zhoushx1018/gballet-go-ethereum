@@ -19,7 +19,7 @@ package hid
 #cgo windows LDFLAGS: -lsetupapi
 
 #ifdef OS_LINUX
-	#include <sys/poll.h>
+	#include <poll.h>
 	#include "os/threads_posix.c"
 	#include "os/poll_posix.c"
 
@@ -39,11 +39,19 @@ package hid
 #elif OS_WINDOWS
 	#include "hidapi/windows/hid.c"
 #endif
+
+#if defined(OS_LINUX) || defined(OS_DARWIN) || defined(OS_WINDOWS)
+	struct libusb_device *libusb_next_device(struct libusb_device *current) {
+		return list_entry(current->list.next, struct libusb_device, list);
+	}
+#endif
 */
 import "C"
 
 import (
 	"errors"
+	"fmt"
+	"reflect"
 	"runtime"
 	"sync"
 	"unsafe"
@@ -70,21 +78,117 @@ func Supported() bool {
 //  - If the vendor id is set to 0 then any vendor matches.
 //  - If the product id is set to 0 then any product matches.
 //  - If the vendor and product id are both 0, all HID devices are returned.
-func Enumerate(vendorID uint16, productID uint16) []DeviceInfo {
+func Enumerate(vendorID uint16, productID uint16) ([]DeviceInfo, error) {
 	enumerateLock.Lock()
 	defer enumerateLock.Unlock()
+
+	var infos []DeviceInfo
+
+	var ctx *C.struct_libusb_context
+	errCode := int(C.libusb_init((**C.struct_libusb_context)(&ctx)))
+	if errCode < 0 {
+		return nil, fmt.Errorf("Error while initializing libusb: %d", errCode)
+	}
+
+	var deviceListPtr **C.struct_libusb_device
+	count := C.libusb_get_device_list(ctx, (***C.struct_libusb_device)(&deviceListPtr))
+	if count < 0 {
+		return nil, fmt.Errorf("Error code listing devices: %d", count)
+	}
+	defer C.libusb_free_device_list(deviceListPtr, C.int(count))
+
+	deviceList := make([]*C.struct_libusb_device, count)
+	var curDev *C.struct_libusb_device
+	curDev = *deviceListPtr
+	for numdev := 0; numdev < int(count); numdev++ {
+		deviceList[numdev] = curDev
+		curDev = C.libusb_next_device(curDev)
+	}
+
+	for devnum, dev := range deviceList {
+
+		// Start by checking the vendor id and the product id if necessary
+		if uint16(dev.device_descriptor.idVendor) != vendorID || !(productID == 0 || uint16(dev.device_descriptor.idProduct) == productID) {
+			continue
+		}
+
+		// Skip HID devices, they will be handled later
+		switch dev.device_descriptor.bDeviceClass {
+		case 0:
+			/* Device class is specified at interface level */
+			for cfgnum := 0; cfgnum < int(dev.device_descriptor.bNumConfigurations); cfgnum++ {
+				var cfgdesc *C.struct_libusb_config_descriptor
+				errCode = int(C.libusb_get_config_descriptor(dev, (C.uint8_t)(cfgnum), &cfgdesc))
+				if errCode != 0 {
+					return nil, fmt.Errorf("Error getting device configuration #%d for generic device %d: %d", cfgnum, devnum, errCode)
+				}
+
+				var ifs []C.struct_libusb_interface
+				ifshdr := (*reflect.SliceHeader)(unsafe.Pointer(&ifs))
+				ifshdr.Cap = int(cfgdesc.bNumInterfaces)
+				ifshdr.Len = int(cfgdesc.bNumInterfaces)
+				ifshdr.Data = uintptr(unsafe.Pointer(cfgdesc._interface))
+
+				for ifnum, ifc := range ifs {
+					/* TODO check all these don't need to be freed */
+					var ifdescs []C.struct_libusb_interface_descriptor
+					ifdshdr := (*reflect.SliceHeader)(unsafe.Pointer(&ifdescs))
+					ifdshdr.Cap = int(ifc.num_altsetting)
+					ifdshdr.Len = int(ifc.num_altsetting)
+					ifdshdr.Data = uintptr(unsafe.Pointer(ifc.altsetting))
+
+					for _, alt := range ifdescs {
+						if alt.bInterfaceClass != 3 {
+							// Device isn't a HID interface, add them to the device list.
+
+							var endps []C.struct_libusb_endpoint_descriptor
+							endpshdr := (*reflect.SliceHeader)(unsafe.Pointer(&endps))
+							endpshdr.Cap = int(alt.bNumEndpoints)
+							endpshdr.Len = int(alt.bNumEndpoints)
+							endpshdr.Data = uintptr(unsafe.Pointer(alt.endpoint))
+
+							endpoints := make([]GenericEndpoint, alt.bNumEndpoints)
+
+							for ne, endpoint := range endps {
+								endpoints[ne] = GenericEndpoint{
+									Direction:  GenericEndpointDirection(endpoint.bEndpointAddress) & GenericEndpointDirectionIn,
+									Address:    uint8(endpoint.bEndpointAddress),
+									Attributes: uint8(endpoint.bmAttributes),
+								}
+							}
+
+							info := &GenericDeviceInfo{
+								Path:      fmt.Sprintf("%x:%x:%d", vendorID, uint16(dev.device_descriptor.idProduct), uint8(C.libusb_get_port_number(dev))),
+								VendorID:  uint16(dev.device_descriptor.idVendor),
+								ProductID: uint16(dev.device_descriptor.idProduct),
+
+								Device: dev,
+
+								Endpoints: endpoints,
+
+								Interface: ifnum,
+							}
+							infos = append(infos, info)
+						}
+					}
+				}
+			}
+		case 3:
+			// Device class is HID, skip it
+			continue
+		}
+	}
 
 	// Gather all device infos and ensure they are freed before returning
 	head := C.hid_enumerate(C.ushort(vendorID), C.ushort(productID))
 	if head == nil {
-		return nil
+		return nil, nil
 	}
 	defer C.hid_free_enumeration(head)
 
 	// Iterate the list and retrieve the device details
-	var infos []DeviceInfo
 	for ; head != nil; head = head.next {
-		info := DeviceInfo{
+		info := &HidDeviceInfo{
 			Path:      C.GoString(head.path),
 			VendorID:  uint16(head.vendor_id),
 			ProductID: uint16(head.product_id),
@@ -104,11 +208,11 @@ func Enumerate(vendorID uint16, productID uint16) []DeviceInfo {
 		}
 		infos = append(infos, info)
 	}
-	return infos
+	return infos, nil
 }
 
 // Open connects to an HID device by its path name.
-func (info DeviceInfo) Open() (*Device, error) {
+func (info *HidDeviceInfo) Open() (Device, error) {
 	enumerateLock.Lock()
 	defer enumerateLock.Unlock()
 
@@ -119,14 +223,14 @@ func (info DeviceInfo) Open() (*Device, error) {
 	if device == nil {
 		return nil, errors.New("hidapi: failed to open device")
 	}
-	return &Device{
+	return &HidDevice{
 		DeviceInfo: info,
 		device:     device,
 	}, nil
 }
 
-// Device is a live HID USB connected device handle.
-type Device struct {
+// HidDevice is a live HID USB connected device handle.
+type HidDevice struct {
 	DeviceInfo // Embed the infos for easier access
 
 	device *C.hid_device // Low level HID device to communicate through
@@ -134,7 +238,7 @@ type Device struct {
 }
 
 // Close releases the HID USB device handle.
-func (dev *Device) Close() error {
+func (dev *HidDevice) Close() error {
 	dev.lock.Lock()
 	defer dev.lock.Unlock()
 
@@ -149,7 +253,7 @@ func (dev *Device) Close() error {
 //
 // Write will send the data on the first OUT endpoint, if one exists. If it does
 // not, it will send the data through the Control Endpoint (Endpoint 0).
-func (dev *Device) Write(b []byte) (int, error) {
+func (dev *HidDevice) Write(b []byte) (int, error) {
 	// Abort if nothing to write
 	if len(b) == 0 {
 		return 0, nil
@@ -192,7 +296,7 @@ func (dev *Device) Write(b []byte) (int, error) {
 }
 
 // Read retrieves an input report from a HID device.
-func (dev *Device) Read(b []byte) (int, error) {
+func (dev *HidDevice) Read(b []byte) (int, error) {
 	// Aborth if nothing to read
 	if len(b) == 0 {
 		return 0, nil
@@ -225,4 +329,40 @@ func (dev *Device) Read(b []byte) (int, error) {
 		return 0, errors.New("hidapi: " + failure)
 	}
 	return read, nil
+}
+
+// Type identify the device as a HID device
+func (dev *HidDevice) Type() DeviceType {
+	return dev.DeviceInfo.Type()
+}
+
+// GenericDeviceHandle represents a libusb device_handle struct
+type GenericDeviceHandle *C.struct_libusb_device_handle
+
+// GenericLibUsbDevice represents a libusb device struct
+type GenericLibUsbDevice *C.struct_libusb_device
+
+// GenericDeviceOpen is a helper function to call the C version of open.
+func GenericDeviceOpen(dev GenericLibUsbDevice) (GenericDeviceHandle, error) {
+	var handle GenericDeviceHandle
+	errCode := int(C.libusb_open(dev, (**C.struct_libusb_device_handle)(&handle)))
+	if errCode < 0 {
+		return nil, fmt.Errorf("Error opening generic USB device %v, code %d", dev, errCode)
+	}
+	return handle, nil
+}
+
+// GenericDeviceClose is a helper function to close a libusb device
+func GenericDeviceClose(handle GenericDeviceHandle) {
+	C.libusb_close(handle)
+}
+
+// InterruptTransfer is a helpler function for libusb's interrupt transfer function
+func InterruptTransfer(handle GenericDeviceHandle, endpoint uint8, data []byte, timeout uint) ([]byte, error) {
+	var transferred C.int
+	errCode := int(C.libusb_interrupt_transfer(handle, (C.uchar)(endpoint), (*C.uchar)(&data[0]), (C.int)(len(data)), &transferred, (C.uint)(timeout)))
+	if errCode != 0 {
+		return nil, fmt.Errorf("Interrupt transfer error, code %d", errCode)
+	}
+	return data[:int(transferred)], nil
 }
