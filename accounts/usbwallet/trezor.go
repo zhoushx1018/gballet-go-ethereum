@@ -34,7 +34,6 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/golang/protobuf/proto"
-	"github.com/karalabe/hid"
 )
 
 var ErrInvalidDeviceType = errors.New("trezor: invalid device type")

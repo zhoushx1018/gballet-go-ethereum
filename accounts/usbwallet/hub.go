@@ -148,7 +148,7 @@ func (hub *Hub) refreshWallets() {
 	}
 	for _, info := range infos {
 		for _, id := range hub.productIDs {
-			vid, pid, endpoint, _ /* FIXME usageID */ := info.IDs()
+			_, pid, endpoint, _ /* FIXME usageID */ := info.IDs()
 			if pid == id && ( /* FIXME usageID == hub.usageID || */ endpoint == hub.endpointID) {
 				devices = append(devices, info)
 				break

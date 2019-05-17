@@ -18,8 +18,8 @@ func Supported() bool {
 // Enumerate returns a list of all the HID devices attached to the system which
 // match the vendor and product id. On platforms that this file implements the
 // function is a noop and returns an empty list always.
-func Enumerate(vendorID uint16, productID uint16) []DeviceInfo {
-	return nil
+func Enumerate(vendorID uint16, productID uint16) ([]DeviceInfo, error) {
+	return nil, ErrUnsupportedPlatform
 }
 
 // HidDevice is a live HID USB connected device handle. On platforms that this file
@@ -45,10 +45,10 @@ func (dev *HidDevice) Write(b []byte) (int, error) {
 }
 
 // GenericDeviceHandle represents a libusb device_handle struct
-type GenericDeviceHandle *C.struct_libusb_device_handle
+type GenericDeviceHandle interface{}
 
 // GenericLibUsbDevice represents a libusb device struct
-type GenericLibUsbDevice *C.struct_libusb_device
+type GenericLibUsbDevice interface{}
 
 // Read retrieves an input report from a HID device. On platforms that this file
 // implements the method just returns an error.
@@ -57,7 +57,7 @@ func (dev *HidDevice) Read(b []byte) (int, error) {
 }
 
 // GenericDeviceOpen is a helper function to call the C version of open.
-func GenericDeviceOpen(dev GenericLibUsbDevice) (GenericDeviceHandle, error) {
+func GenericDeviceOpen(dev GenericLibUsbDevice) (interface{}, error) {
 	return nil, ErrUnsupportedPlatform
 }
 
