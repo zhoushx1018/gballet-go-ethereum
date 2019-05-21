@@ -4,7 +4,7 @@
 // This file is released under the 3-clause BSD license. Note however that Linux
 // support depends on libusb, released under LGNU GPL 2.1 or later.
 
-// +build linux,cgo darwin,!ios,cgo windows,cgo
+// +build freebsd,cgo linux,cgo darwin,!ios,cgo windows,cgo
 
 package hid
 
@@ -17,6 +17,7 @@ package hid
 #cgo darwin LDFLAGS: -framework CoreFoundation -framework IOKit
 #cgo windows CFLAGS: -DOS_WINDOWS
 #cgo windows LDFLAGS: -lsetupapi
+#cgo freebsd LDFLAGS: -lusb
 
 #ifdef OS_LINUX
 	#include <poll.h>
@@ -38,11 +39,30 @@ package hid
 	#include "hidapi/mac/hid.c"
 #elif OS_WINDOWS
 	#include "hidapi/windows/hid.c"
+#elif defined(__FreeBSD__)
+    #include <stdlib.h>
+	#include <libusb.h>
+	#include "hidapi/libusb/hid.c"
 #endif
 
-#if defined(OS_LINUX) || defined(OS_DARWIN) || defined(OS_WINDOWS)
-	struct libusb_device *libusb_next_device(struct libusb_device *current) {
-		return list_entry(current->list.next, struct libusb_device, list);
+#if defined(OS_LINUX) || defined(OS_WINDOWS)
+	void copy_device_list_to_slice(struct libusb_device **data, struct libusb_device **list, int count)
+	{
+		struct libusb_device *current = *list;
+		for (int i=0; i<count; i++)
+		{
+			 data[i] = current;
+			 current = list_entry(current->list.next, struct libusb_device, list);
+		}
+	}
+#elif defined(OS_DARWIN) || defined(__FreeBSD__)
+	void copy_device_list_to_slice(struct libusb_device **data, struct libusb_device **list, int count)
+	{
+		// No memcopy because the struct size isn't available for a sizeof()
+		for (int i=0; i<count; i++)
+		{
+			data[i] = list[i];
+		}
 	}
 #endif
 */
@@ -98,27 +118,28 @@ func Enumerate(vendorID uint16, productID uint16) ([]DeviceInfo, error) {
 	defer C.libusb_free_device_list(deviceListPtr, C.int(count))
 
 	deviceList := make([]*C.struct_libusb_device, count)
-	var curDev *C.struct_libusb_device
-	curDev = *deviceListPtr
-	for numdev := 0; numdev < int(count); numdev++ {
-		deviceList[numdev] = curDev
-		curDev = C.libusb_next_device(curDev)
-	}
+	dlhdr := (*reflect.SliceHeader)(unsafe.Pointer(&deviceList))
+	C.copy_device_list_to_slice((**C.struct_libusb_device)(unsafe.Pointer(dlhdr.Data)), deviceListPtr, C.int(count))
 
 	for devnum, dev := range deviceList {
+		var desc C.struct_libusb_device_descriptor
+		errCode := int(C.libusb_get_device_descriptor(dev, &desc))
+		if errCode < 0 {
+			return nil, fmt.Errorf("Error getting device descriptor for generic device %d: %d", devnum, errCode)
+		}
 
 		// Start by checking the vendor id and the product id if necessary
-		if uint16(dev.device_descriptor.idVendor) != vendorID || !(productID == 0 || uint16(dev.device_descriptor.idProduct) == productID) {
+		if uint16(desc.idVendor) != vendorID || !(productID == 0 || uint16(desc.idProduct) == productID) {
 			continue
 		}
 
 		// Skip HID devices, they will be handled later
-		switch dev.device_descriptor.bDeviceClass {
+		switch desc.bDeviceClass {
 		case 0:
 			/* Device class is specified at interface level */
-			for cfgnum := 0; cfgnum < int(dev.device_descriptor.bNumConfigurations); cfgnum++ {
+			for cfgnum := 0; cfgnum < int(desc.bNumConfigurations); cfgnum++ {
 				var cfgdesc *C.struct_libusb_config_descriptor
-				errCode = int(C.libusb_get_config_descriptor(dev, (C.uint8_t)(cfgnum), &cfgdesc))
+				errCode = int(C.libusb_get_config_descriptor(dev, C.uint8_t(cfgnum), &cfgdesc))
 				if errCode != 0 {
 					return nil, fmt.Errorf("Error getting device configuration #%d for generic device %d: %d", cfgnum, devnum, errCode)
 				}
@@ -130,7 +151,6 @@ func Enumerate(vendorID uint16, productID uint16) ([]DeviceInfo, error) {
 				ifshdr.Data = uintptr(unsafe.Pointer(cfgdesc._interface))
 
 				for ifnum, ifc := range ifs {
-					/* TODO check all these don't need to be freed */
 					var ifdescs []C.struct_libusb_interface_descriptor
 					ifdshdr := (*reflect.SliceHeader)(unsafe.Pointer(&ifdescs))
 					ifdshdr.Cap = int(ifc.num_altsetting)
@@ -158,9 +178,9 @@ func Enumerate(vendorID uint16, productID uint16) ([]DeviceInfo, error) {
 							}
 
 							info := &GenericDeviceInfo{
-								Path:      fmt.Sprintf("%x:%x:%d", vendorID, uint16(dev.device_descriptor.idProduct), uint8(C.libusb_get_port_number(dev))),
-								VendorID:  uint16(dev.device_descriptor.idVendor),
-								ProductID: uint16(dev.device_descriptor.idProduct),
+								Path:      fmt.Sprintf("%x:%x:%d", vendorID, uint16(desc.idProduct), uint8(C.libusb_get_port_number(dev))),
+								VendorID:  uint16(desc.idVendor),
+								ProductID: uint16(desc.idProduct),
 
 								Device: dev,
 
