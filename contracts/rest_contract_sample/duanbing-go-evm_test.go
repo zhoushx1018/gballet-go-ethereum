@@ -18,8 +18,7 @@ import (
 // TODO:current test code , is base go-ethereum V1.8.0
 //	when this evm package is stable ,need to update to new version, like  V1.8.23
 
-
-func TestEthEvm(t *testing.T) {
+func TestDuanBingGoEvm(t *testing.T) {
 
 	abiFileName := "./testdata/coin_sol_Coin.abi"
 	binFileName := "./testdata/coin_sol_Coin.bin"
@@ -28,7 +27,7 @@ func TestEthEvm(t *testing.T) {
 	msg := ec.NewMessage(infra.FromAddress, &infra.ToAddress, infra.Nonce, infra.Amount, infra.GasLimit, big.NewInt(0), data, false)
 	cc := infra.ChainContext{}
 	ctx := ec.NewEVMContext(msg, cc.GetHeader(infra.TestHash, 0), cc, &infra.FromAddress)
-	dataPath := "/tmp/htdfTmpTestData_ethEvm"
+	dataPath := "/tmp/htdfTmpTestData_duanbing-go-evm"
 	os.Remove(dataPath)
 	mdb, err := ethdb.NewLDBDatabase(dataPath, 100, 100)
 	infra.Must(err)

@@ -6,12 +6,12 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/zhoushx1018/gballet-go-ethereum/crypto"
 	"io/ioutil"
 	"math/big"
 	"os"
 	"time"
 )
-
 
 var (
 	TestHash    = common.StringToHash("zhoushx")
@@ -19,10 +19,9 @@ var (
 	ToAddress   = common.StringToAddress("UserB")
 	Amount      = big.NewInt(0)
 	Nonce       = uint64(0)
-	GasLimit    = big.NewInt(100000)
+	GasLimit    = big.NewInt(100000000000000000)
 	Coinbase    = FromAddress
 )
-
 
 func Must(err error) {
 	if err != nil {
@@ -42,8 +41,6 @@ func LoadAbi(filename string) abi.ABI {
 	Must(err)
 	return abiObj
 }
-
-
 
 func Print(outputs []byte, name string) {
 	fmt.Printf("method=%s, output=%x\n", name, outputs)
@@ -75,4 +72,8 @@ func (cc ChainContext) GetHeader(hash common.Hash, number uint64) *types.Header 
 		//MixDigest:  TestHash,
 		//Nonce:      types.EncodeNonce(1),
 	}
+}
+
+func VmTestBlockHash(n uint64) common.Hash {
+	return common.BytesToHash(crypto.Keccak256([]byte(big.NewInt(int64(n)).String())))
 }
