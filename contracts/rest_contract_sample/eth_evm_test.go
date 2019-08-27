@@ -1,7 +1,6 @@
 package main
 
 import (
-	"./infra"
 	"bytes"
 	"fmt"
 	ec "github.com/duanbing/go-evm/core"
@@ -10,6 +9,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/zhoushx1018/gballet-go-ethereum/contracts/rest_contract_sample/infra"
 	"math/big"
 	"os"
 	"testing"

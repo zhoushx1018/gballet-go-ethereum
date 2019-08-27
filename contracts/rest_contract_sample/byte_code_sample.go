@@ -5,8 +5,8 @@ import (
 	"github.com/gballet/go-ethereum/common"
 	"math/big"
 
-	"./infra"
 	"fmt"
+	"github.com/zhoushx1018/gballet-go-ethereum/contracts/rest_contract_sample/infra"
 	"os"
 )
 

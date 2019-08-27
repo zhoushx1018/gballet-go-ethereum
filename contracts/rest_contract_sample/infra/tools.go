@@ -51,6 +51,11 @@ func Print(outputs []byte, name string) {
 
 type ChainContext struct{}
 
+//
+//func(cc ChainContext) Engine() consensus.Engine{
+//
+//}
+
 func (cc ChainContext) GetHeader(hash common.Hash, number uint64) *types.Header {
 
 	return &types.Header{

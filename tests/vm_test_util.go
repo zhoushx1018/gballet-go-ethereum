@@ -120,6 +120,11 @@ func (t *VMTest) exec(statedb *state.StateDB, vmconfig vm.Config) ([]byte, uint6
 	return evm.Call(vm.AccountRef(e.Caller), e.Address, e.Data, e.GasLimit, e.Value)
 }
 
+
+func (t *VMTest) NewEVM(statedb *state.StateDB, vmconfig vm.Config) *vm.EVM {
+	return t.newEVM(statedb, vmconfig)
+}
+
 func (t *VMTest) newEVM(statedb *state.StateDB, vmconfig vm.Config) *vm.EVM {
 	initialCall := true
 	canTransfer := func(db vm.StateDB, address common.Address, amount *big.Int) bool {
