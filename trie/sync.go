@@ -21,8 +21,8 @@ import (
 	"fmt"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/common/prque"
 	"github.com/ethereum/go-ethereum/ethdb"
+	"github.com/zhoushx1018/gballet-go-ethereum/common/prque"
 )
 
 // ErrNotRequested is returned by the trie sync when it's requested to process a
