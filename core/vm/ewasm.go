@@ -25,8 +25,8 @@ import (
 	"fmt"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/params"
 	"github.com/go-interpreter/wagon/wasm"
+	"github.com/zhoushx1018/gballet-go-ethereum/params"
 
 	"github.com/go-interpreter/wagon/exec"
 )
@@ -158,7 +158,6 @@ func (in *InterpreterEWASM) CanRun(file []byte) bool {
 	if len(file) < 4 || string(file[:4]) != "\000asm" {
 		return false
 	}
-
 
 	return true
 }

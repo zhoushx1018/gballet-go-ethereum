@@ -10,8 +10,8 @@ import (
 	"bytes"
 	"math/big"
 
-	cloudflare "github.com/ethereum/go-ethereum/crypto/bn256/cloudflare"
-	google "github.com/ethereum/go-ethereum/crypto/bn256/google"
+	"github.com/ethereum/go-ethereum/crypto/bn256/google"
+	cloudflare "github.com/zhoushx1018/gballet-go-ethereum/crypto/bn256/cloudflare"
 )
 
 // FuzzAdd fuzzez bn256 addition between the Google and Cloudflare libraries.

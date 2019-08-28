@@ -6,9 +6,9 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/zhoushx1018/gballet-go-ethereum/contracts/rest_contract_sample/infra"
 	//"github.com/zhoushx1018/gballet-go-ethereum/core"
-	"github.com/zhoushx1018/gballet-go-ethereum/core/state"
-	//"github.com/zhoushx1018/gballet-go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/ethdb"
+	"github.com/zhoushx1018/gballet-go-ethereum/core/state"
+	"github.com/zhoushx1018/gballet-go-ethereum/core/vm"
 	//"github.com/zhoushx1018/gballet-go-ethereum/params"
 	"math/big"
 
@@ -45,16 +45,16 @@ func TestGballetGoEthEvm(t *testing.T) {
 	testBalance := statedb.GetBalance(infra.FromAddress)
 	fmt.Println("init testBalance =", testBalance)
 	infra.Must(err)
+
+	logConfig := vm.LogConfig{}
+	structLogger := vm.NewStructLogger(&logConfig)
+	vmConfig := vm.Config{Debug: true, Tracer: structLogger /*, JumpTable: vm.NewByzantiumInstructionSet()*/}
+
+	fmt.Printf("statedb=%v|vmconfig=%v\n", statedb, vmConfig)
+
+	//var vmTest tests.VMTest
 	//
-	//logConfig := vm.LogConfig{}
-	//structLogger := vm.NewStructLogger(&logConfig)
-	//vmConfig := vm.Config{Debug: true, Tracer: structLogger /*, JumpTable: vm.NewByzantiumInstructionSet()*/}
-	//
-	//fmt.Printf("statedb=%v|vmconfig=%v\n", statedb, vmConfig)
-	//
-	////var vmTest tests.VMTest
-	////
-	////vmTest.NewEVM(statedb,vmConfig)
+	//vmTest.NewEVM(statedb,vmConfig)
 	//
 	//initialCall := true
 	//canTransfer := func(db vm.StateDB, address common.Address, amount *big.Int) bool {
