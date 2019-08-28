@@ -17,6 +17,7 @@
 package vm
 
 import (
+	"fmt"
 	"math/big"
 	"sync/atomic"
 	"time"
@@ -51,8 +52,11 @@ func run(evm *EVM, contract *Contract, input []byte, readOnly bool) ([]byte, err
 			return RunPrecompiledContract(p, input, contract)
 		}
 	}
-	for _, interpreter := range evm.interpreters {
+
+	fmt.Printf("range interpreters|rangSize=%d\n", len(evm.interpreters))
+	for i, interpreter := range evm.interpreters {
 		if interpreter.CanRun(contract.Code) {
+			fmt.Printf("interpreter canRun|i=%d\n", i)
 			if evm.interpreter != interpreter {
 				// Ensure that the interpreter pointer is set back
 				// to its current value upon return.
