@@ -42,6 +42,12 @@ func LoadAbi(filename string) abi.ABI {
 	return abiObj
 }
 
+func LoadRaw(filename string) []byte {
+	code, err := ioutil.ReadFile(filename)
+	Must(err)
+	return code
+}
+
 func Print(outputs []byte, name string) {
 	fmt.Printf("method=%s, output=%x\n", name, outputs)
 }
