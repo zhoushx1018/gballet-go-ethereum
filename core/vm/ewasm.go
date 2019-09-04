@@ -144,6 +144,10 @@ func (in *InterpreterEWASM) Run(contract *Contract, input []byte, ro bool) ([]by
 			err = nil
 		}
 
+		if len(input) == 0 {
+			return in.contract.Code, err
+		}
+
 		return in.returnData, err
 	}
 
