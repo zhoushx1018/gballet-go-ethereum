@@ -96,19 +96,22 @@ func TestGballetGoEthWasm(t *testing.T) {
 	fmt.Printf("getcode:%x\n%x\n", contractCode, statedb.GetCode(contractAddr))
 	fmt.Printf("gasLeftover=%v\n", gasLeftover)
 	fmt.Printf("after create|contractAddr=%s\n", contractAddr.String())
-	//
-	//statedb.SetBalance(infra.FromAddress, big.NewInt(0).SetUint64(gasLeftover))
-	//testBalance = statedb.GetBalance(infra.FromAddress)
-	//fmt.Println("after create contract, testBalance =", testBalance)
+
+	statedb.SetBalance(infra.FromAddress, big.NewInt(0).SetUint64(gasLeftover))
+	testBalance = statedb.GetBalance(infra.FromAddress)
+	fmt.Println("after create contract, testBalance =", testBalance)
 	//abiObj := infra.LoadAbi(abiFileName)
 	//
 	//input, err := abiObj.Pack("minter")
 	//infra.Must(err)
-	//outputs, gasLeftover, vmerr := evm.Call(contractRef, contractAddr, input, statedb.GetBalance(infra.FromAddress).Uint64(), big.NewInt(0))
-	//infra.Must(vmerr)
-	//
-	////fmt.Printf("minter is %x\n", common.BytesToAddress(outputs))
-	////fmt.Printf("call address %x\n", contractRef)
+
+	input := []byte{0x01, 0x00, 0x00, 0x01}	
+
+	outputs, gasLeftover, vmerr := evm.Call(contractRef, contractAddr, input, statedb.GetBalance(infra.FromAddress).Uint64(), big.NewInt(0))
+	infra.Must(vmerr)
+
+	fmt.Printf("minter is %x\n", common.BytesToAddress(outputs))
+	fmt.Printf("call address %x\n", contractRef)
 	//
 	//sender := common.BytesToAddress(outputs)
 	//
